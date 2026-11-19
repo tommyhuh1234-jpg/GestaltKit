@@ -1,0 +1,96 @@
+import SwiftUI
+import UIKit
+
+struct DeviceSnapshot {
+    let deviceName: String
+    let modelIdentifier: String
+    let systemVersion: String
+    let systemName: String
+
+    static var current: DeviceSnapshot {
+        var info = utsname()
+        uname(&info)
+        let identifier = withUnsafePointer(to: &info.machine) {
+            $0.withMemoryRebound(to: CChar.self, capacity: 1) {
+                String(cString: $0)
+            }
+        }
+
+        return DeviceSnapshot(
+            deviceName: UIDevice.current.name,
+            modelIdentifier: identifier,
+            systemVersion: UIDevice.current.systemVersion,
+            systemName: UIDevice.current.systemName
+        )
+    }
+}
+
+struct ContentView: View {
+    private let snapshot = DeviceSnapshot.current
+    @State private var simulatedFlags: [String: Bool] = [
+        "Example feature A": false,
+        "Example feature B": true,
+        "Example feature C": false
+    ]
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section("Connected device") {
+                    infoRow("Device name", snapshot.deviceName)
+                    infoRow("Hardware identifier", snapshot.modelIdentifier)
+                    infoRow("Operating system", snapshot.systemName)
+                    infoRow("OS version", snapshot.systemVersion)
+                }
+
+                Section {
+                    Label("Public device information only",
+                          systemImage: "checkmark.shield")
+                    Text("This app does not read private MobileGestalt keys, modify system settings, or bypass iOS security.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                } header: {
+                    Text("Research scope")
+                }
+
+                Section("Feature flag simulator") {
+                    ForEach(simulatedFlags.keys.sorted(), id: \.self) { key in
+                        Toggle(key, isOn: Binding(
+                            get: { simulatedFlags[key, default: false] },
+                            set: { simulatedFlags[key] = $0 }
+                        ))
+                    }
+                    Text("These switches are local demonstrations. They do not enable or disable actual iOS features.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+
+                Section("About") {
+                    infoRow("GestaltKit", "Research dashboard 0.1")
+                    infoRow("MobileGestalt access", "Not used")
+                }
+            }
+            .navigationTitle("GestaltKit")
+        }
+    }
+
+    private func infoRow(_ title: String, _ value: String) -> some View {
+        HStack {
+            Text(title)
+            Spacer(minLength: 12)
+            Text(value)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.trailing)
+                .textSelection(.enabled)
+        }
+    }
+}
+
+@main
+struct GestaltKitApp: App {
+    var body: some Scene {
+        WindowGroup {
+            ContentView()
+        }
+    }
+}
