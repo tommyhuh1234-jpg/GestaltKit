@@ -1,96 +1,42 @@
-import SwiftUI
-import UIKit
 
-struct DeviceSnapshot {
-    let deviceName: String
-    let modelIdentifier: String
-    let systemVersion: String
-    let systemName: String
+name: Build GestaltKit IPA
 
-    static var current: DeviceSnapshot {
-        var info = utsname()
-        uname(&info)
-        let identifier = withUnsafePointer(to: &info.machine) {
-            $0.withMemoryRebound(to: CChar.self, capacity: 1) {
-                String(cString: $0)
-            }
-        }
+on:
+  workflow_dispatch:
 
-        return DeviceSnapshot(
-            deviceName: UIDevice.current.name,
-            modelIdentifier: identifier,
-            systemVersion: UIDevice.current.systemVersion,
-            systemName: UIDevice.current.systemName
-        )
-    }
-}
+jobs:
+  build:
+    runs-on: macos-15
 
-struct ContentView: View {
-    private let snapshot = DeviceSnapshot.current
-    @State private var simulatedFlags: [String: Bool] = [
-        "Example feature A": false,
-        "Example feature B": true,
-        "Example feature C": false
-    ]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    var body: some View {
-        NavigationStack {
-            List {
-                Section("Connected device") {
-                    infoRow("Device name", snapshot.deviceName)
-                    infoRow("Hardware identifier", snapshot.modelIdentifier)
-                    infoRow("Operating system", snapshot.systemName)
-                    infoRow("OS version", snapshot.systemVersion)
-                }
+      - name: Install XcodeGen
+        run: brew install xcodegen
 
-                Section {
-                    Label("Public device information only",
-                          systemImage: "checkmark.shield")
-                    Text("This app does not read private MobileGestalt keys, modify system settings, or bypass iOS security.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                } header: {
-                    Text("Research scope")
-                }
+      - name: Generate Xcode project
+        run: xcodegen generate
 
-                Section("Feature flag simulator") {
-                    ForEach(simulatedFlags.keys.sorted(), id: \.self) { key in
-                        Toggle(key, isOn: Binding(
-                            get: { simulatedFlags[key, default: false] },
-                            set: { simulatedFlags[key] = $0 }
-                        ))
-                    }
-                    Text("These switches are local demonstrations. They do not enable or disable actual iOS features.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
+      - name: Build GestaltKit
+        run: |
+          xcodebuild \
+            -project GestaltKit.xcodeproj \
+            -scheme GestaltKit \
+            -configuration Debug \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            build
 
-                Section("About") {
-                    infoRow("GestaltKit", "Research dashboard 0.1")
-                    infoRow("MobileGestalt access", "Not used")
-                }
-            }
-            .navigationTitle("GestaltKit")
-        }
-    }
+      - name: Package IPA
+        run: |
+          mkdir -p Payload
+          cp -R build/Build/Products/Debug-iphoneos/GestaltKit.app Payload/
+          zip -r GestaltKit.ipa Payload
 
-    private func infoRow(_ title: String, _ value: String) -> some View {
-        HStack {
-            Text(title)
-            Spacer(minLength: 12)
-            Text(value)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.trailing)
-                .textSelection(.enabled)
-        }
-    }
-}
-
-@main
-struct GestaltKitApp: App {
-    var body: some Scene {
-        WindowGroup {
-            ContentView()
-        }
-    }
-}
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: GestaltKit-IPA
+          path: GestaltKit.ipa
